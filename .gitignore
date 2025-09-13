@@ -1,0 +1,73 @@
+﻿# .NET / Visual Studio / Rider
+
+# Build artifacts
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Bb]uild/
+[Bb]ld/
+artifacts/
+
+# Architecture-specific
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# IDE settings
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# VS Code
+.vscode/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+**/packages/*
+*.nuget.props
+*.nuget.targets
+
+# Logs & caches
+*.log
+*.cache
+*.tmp
+*.bak
+~$*
+*.swp
+
+# Test results
+TestResults/
+*.coverage
+*.coveragexml
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Tooling
+.dotnet/
+
+# Rider/JetBrains
+*.iws
+*.iml
+*.ipr
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# Generated/temporary
+Generated Files/
+
+# Project-specific outputs
+out_dpl2*.wav
