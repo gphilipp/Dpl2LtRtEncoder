@@ -419,10 +419,17 @@ namespace Dpl2LtRtEncoder
 
             return coeffs;
         }
-        // Stereo-linked look-ahead peak limiter (sample-peak, with headroom). For true-peak safety, set ceiling ≤ 0.98.
-
     }
 
+    /// <summary>
+    /// Stereo-linked look-ahead peak limiter operating on sample peaks with optional headroom.
+    /// </summary>
+    /// <remarks>
+    /// - Uses a circular buffer to delay audio by a small look-ahead time, allowing gain reduction to be applied before a peak occurs.<br/>
+    /// - Gain is stereo-linked, computed from the maximum absolute magnitude of the two channels across the look-ahead window.<br/>
+    /// - Attack uses a faster coefficient, release uses a slower one for smooth recovery.<br/>
+    /// - For improved true-peak safety, keep the ceiling at or below approximately 0.98 when processing 32-bit float PCM.
+    /// </remarks>
     class LookaheadLimiterStereo
     {
         private readonly int N;
@@ -432,6 +439,15 @@ namespace Dpl2LtRtEncoder
         private int w = 0, r = 0, count = 0;
         private float env = 1f;
 
+        /// <summary>
+        /// Creates a stereo-linked look-ahead limiter.
+        /// </summary>
+        /// <param name="sampleRate">Audio sample rate in Hz.</param>
+        /// <param name="lookaheadMs">Look-ahead time in milliseconds. Determines buffer size and the preview window used to detect peaks.</param>
+        /// <param name="attackMs">Attack time in milliseconds. Smaller values clamp peaks more aggressively.</param>
+        /// <param name="releaseMs">Release time in milliseconds. Larger values yield smoother recovery after gain reduction.</param>
+        /// <param name="ceiling">Maximum allowed output peak (linear, 0..1). Typical values are 0.98 or lower for true-peak safety.</param>
+        /// <param name="kneeDb">Reserved for future soft-knee behavior (in dB). Currently unused.</param>
         public LookaheadLimiterStereo(int sampleRate, float lookaheadMs = 2.0f, float attackMs = 0.5f, float releaseMs = 80f, float ceiling = 0.98f, float kneeDb = 3.0f)
         {
             N = Math.Max(1, (int)Math.Round(sampleRate * lookaheadMs / 1000.0));
@@ -443,6 +459,16 @@ namespace Dpl2LtRtEncoder
             magBuf = new float[N];
         }
 
+        /// <summary>
+        /// Processes one stereo input sample through the limiter.
+        /// </summary>
+        /// <param name="inL">Left input sample (linear, typically -1..+1).</param>
+        /// <param name="inR">Right input sample (linear, typically -1..+1).</param>
+        /// <param name="outL">Left output sample after look-ahead limiting.</param>
+        /// <param name="outR">Right output sample after look-ahead limiting.</param>
+        /// <returns>
+        /// True when a valid output sample is produced; false during the initial fill while the look-ahead buffer is not yet primed.
+        /// </returns>
         public bool Process(float inL, float inR, out float outL, out float outR)
         {
             // Write incoming sample
