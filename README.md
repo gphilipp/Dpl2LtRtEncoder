@@ -102,10 +102,9 @@ Where S1/S2 are **BL/BR** for `--layout back` or **SL/SR** for `--layout side`.
 ### Channel Matrix (PLII‑style Lt/Rt)
 
 Let inputs be $L, R, C, S_L, S_R$ (LFE optional). Gains:
-
-* $c = 10^{\frac{\text{center\_db}}{20}}$  (default −3 dB ⇒ 0.707)
-* $a = 10^{\frac{\text{near\_sur\_db}}{20}}$ (default −1.2 dB ⇒ ≈0.871)
-* $b = 10^{\frac{\text{far\_sur\_db}}{20}}$  (default −6.2 dB ⇒ ≈0.490)
+* $c = 10^{\frac{\text{center-db}}{20}}$  (default −3 dB ⇒ 0.707)
+* $a = 10^{\frac{\text{near-sur-db}}{20}}$ (default −1.2 dB ⇒ ≈0.871)
+* $b = 10^{\frac{\text{far-sur-db}}{20}}$  (default −6.2 dB ⇒ ≈0.490)
 * $\mathcal{H}\{·\}$: Hilbert transform giving approximately **+90°** phase shift (we use FIR windowed ideal)
 
 Then the **Lt/Rt** are:
