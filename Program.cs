@@ -110,10 +110,11 @@ namespace Dpl2LtRtEncoder
                 int bytesPerSample = wf.BitsPerSample / 8;
                 int bytesPerFrame = wf.BlockAlign; // bytes per multi-channel frame
 
-                // Pre-size output (approx)
-                var approxFrames = (int)(reader.Length / bytesPerFrame);
-                var outL = new List<float>(approxFrames);
-                var outR = new List<float>(approxFrames);
+                // Create writer and limiter (streaming)
+                var outFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2);
+                using var writer = new WaveFileWriter(outputPath, outFormat);
+                var limiter = new LookaheadLimiterStereo(sampleRate, lookaheadMs: 2.0f, attackMs: 0.5f, releaseMs: 80f, ceiling: limitCeiling, kneeDb: 3.0f);
+                float[] frameOut = new float[2];
 
                 // DSP blocks
                 var hpBL = new BiquadHighPass(sampleRate, hpSurFreq, 0.707f);
@@ -248,25 +249,20 @@ namespace Dpl2LtRtEncoder
                         float Lt = FL + cGain * FC + S_lt + lfeGain * LFE;
                         float Rt = FR + cGain * FC + S_rt + lfeGain * LFE;
 
-                        outL.Add(Lt);
-                        outR.Add(Rt);
+                        if (limiter.Process(Lt, Rt, out float yL, out float yR))
+                        {
+                            frameOut[0] = yL; frameOut[1] = yR;
+                            writer.WriteSamples(frameOut, 0, 2);
+                        }
                     }
                 }
 
-                // Normalize/limit to ceiling
-                NormalizeTwoPass(outL, outR, limitCeiling);
-
-                // Write WAV (stereo float 32)
-                var outFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2);
-                using var writer = new WaveFileWriter(outputPath, outFormat);
-                // Interleave and write
-                float[] interleaved = new float[outL.Count * 2];
-                for (int i = 0, j = 0; i < outL.Count; i++)
+                // Flush limiter tail
+                while (limiter.Flush(out float yL2, out float yR2))
                 {
-                    interleaved[j++] = outL[i];
-                    interleaved[j++] = outR[i];
+                    frameOut[0] = yL2; frameOut[1] = yR2;
+                    writer.WriteSamples(frameOut, 0, 2);
                 }
-                writer.WriteSamples(interleaved, 0, interleaved.Length);
 
                 Console.WriteLine($"Done. Wrote Lt/Rt to: {outputPath}");
                 return 0;
@@ -380,9 +376,10 @@ namespace Dpl2LtRtEncoder
     // FIR Hilbert transformer (+90°) using windowed ideal impulse response
     class HilbertTransformer
     {
-        private readonly float[] h;   // taps
-        private readonly float[] d;   // delay line
+        private readonly float[] h; // taps
+        private readonly float[] d; // delay line
         private int idx;
+
         public HilbertTransformer(int taps)
         {
             if (taps % 2 == 0) taps += 1; // ensure odd
@@ -390,6 +387,7 @@ namespace Dpl2LtRtEncoder
             d = new float[taps];
             idx = 0;
         }
+
         public float Process(float x)
         {
             d[idx] = x;
@@ -400,6 +398,7 @@ namespace Dpl2LtRtEncoder
                 acc += h[i] * d[j];
                 if (--j < 0) j = d.Length - 1;
             }
+
             if (++idx >= d.Length) idx = 0;
             return acc;
         }
@@ -419,11 +418,105 @@ namespace Dpl2LtRtEncoder
                 {
                     hn = (float)(2.0 / (Math.PI * k)); // ideal
                 }
+
                 // Blackman window
-                float w = 0.42f - 0.5f * (float)Math.Cos(2 * Math.PI * n / (M - 1)) + 0.08f * (float)Math.Cos(4 * Math.PI * n / (M - 1));
+                float w = 0.42f - 0.5f * (float)Math.Cos(2 * Math.PI * n / (M - 1)) +
+                          0.08f * (float)Math.Cos(4 * Math.PI * n / (M - 1));
                 coeffs[n] = hn * w;
             }
+
             return coeffs;
+        }
+        // Stereo-linked look-ahead peak limiter (sample-peak, with headroom). For true-peak safety, set ceiling ≤ 0.98.
+
+    }
+
+    class LookaheadLimiterStereo
+    {
+        private readonly int N;
+        private readonly float ceiling;
+        private readonly float attCoeff, relCoeff;
+        private readonly float[] bufL, bufR, magBuf;
+        private int w = 0, r = 0, count = 0;
+        private float env = 1f;
+
+        public LookaheadLimiterStereo(int sampleRate, float lookaheadMs = 2.0f, float attackMs = 0.5f, float releaseMs = 80f, float ceiling = 0.98f, float kneeDb = 3.0f)
+        {
+            N = Math.Max(1, (int)Math.Round(sampleRate * lookaheadMs / 1000.0));
+            this.ceiling = ceiling;
+            attCoeff = (float)Math.Exp(-1.0 / (Math.Max(1.0, attackMs) * sampleRate / 1000.0));
+            relCoeff = (float)Math.Exp(-1.0 / (Math.Max(1.0, releaseMs) * sampleRate / 1000.0));
+            bufL = new float[N];
+            bufR = new float[N];
+            magBuf = new float[N];
+        }
+
+        public bool Process(float inL, float inR, out float outL, out float outR)
+        {
+            // Write incoming sample
+            float m = MathF.Max(MathF.Abs(inL), MathF.Abs(inR));
+            bufL[w] = inL; bufR[w] = inR; magBuf[w] = m;
+            w++; if (w >= N) w = 0;
+            if (count < N) { count++; outL = 0; outR = 0; return false; }
+
+            // Output oldest sample at r
+            float xL = bufL[r];
+            float xR = bufR[r];
+
+            // Compute max over look-ahead window (simple scan, N is small ~96 @ 48kHz 2ms)
+            float aheadMax = 0f;
+            for (int i = 0; i < N; i++)
+            {
+                float mm = magBuf[i];
+                if (mm > aheadMax) aheadMax = mm;
+            }
+
+            float desired = 1f;
+            if (aheadMax > ceiling && aheadMax > 1e-12f)
+                desired = ceiling / aheadMax;
+
+            // Smooth gain (attack fast, release slow)
+            if (desired < env)
+                env = desired + (env - desired) * attCoeff;
+            else
+                env = desired + (env - desired) * relCoeff;
+
+            outL = xL * env;
+            outR = xR * env;
+
+            // Advance read index
+            r++; if (r >= N) r = 0;
+            return true;
+        }
+
+        public bool Flush(out float outL, out float outR)
+        {
+            if (count == 0) { outL = 0; outR = 0; return false; }
+
+            // Compute max over remaining window
+            float aheadMax = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                int idx = (r + i) % N;
+                float mm = magBuf[idx];
+                if (mm > aheadMax) aheadMax = mm;
+            }
+            float desired = 1f;
+            if (aheadMax > ceiling && aheadMax > 1e-12f)
+                desired = ceiling / aheadMax;
+            if (desired < env)
+                env = desired + (env - desired) * attCoeff;
+            else
+                env = desired + (env - desired) * relCoeff;
+
+            outL = bufL[r] * env;
+            outR = bufR[r] * env;
+
+            // Clear this sample and advance
+            magBuf[r] = 0; bufL[r] = 0; bufR[r] = 0;
+            r++; if (r >= N) r = 0;
+            count--;
+            return true;
         }
     }
 }
