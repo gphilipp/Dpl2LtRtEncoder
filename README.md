@@ -25,7 +25,6 @@ The result is an Lt/Rt that steers dialog to **Center**, keeps music **wide**, a
 * **Input:** 6‑channel WAV (5.1), PCM 16/24/32 or 32‑bit float (Extensible supported)
 * **Output:** 2‑channel 32‑bit float WAV (Lt/Rt)
 * **Layouts:** `--layout back` (`FL FR FC LFE BL BR`) or `--layout side` (`FL FR FC LFE SL SR`)
-* **Surround swap:** `--swap-sur` if your BL/BR (or SL/SR) are physically reversed
 * **PLII‑style matrix:** center @ −3 dB (tunable); surrounds with near/far gains (defaults −1.2 dB / −6.2 dB) and ±90° phase via Hilbert FIR
 * **Surround pre‑processing:** 2nd‑order Butterworth **high‑pass** (default 120 Hz) and **delay** (default 10 ms)
 * **Limiter:** Stereo‑linked **look‑ahead** peak limiter (default 2 ms look‑ahead) with soft knee
@@ -49,7 +48,7 @@ dotnet build
 
 ```bash
 dotnet run -- <input5_1.wav> <output_ltrt.wav> \
-  [--layout back|side] [--swap-sur] \
+  [--layout back|side] \
   [--sr-delay-ms 10] [--hp-sur-freq 120] \
   [--center-db -3] [--near-sur-db -1.2] [--far-sur-db -6.2] \
   [--lfe-db -inf] [--limit 0.98]
@@ -63,11 +62,6 @@ dotnet run -- <input5_1.wav> <output_ltrt.wav> \
 dotnet run -- "5.1_in.wav" "out_ltrt.wav" --layout back --center-db -3 --near-sur-db -1.2 --far-sur-db -6.2 --sr-delay-ms 10 --hp-sur-freq 120 --limit 0.98
 ```
 
-**If your surrounds are flipped:**
-
-```bash
-dotnet run -- "5.1_in.wav" "out_ltrt.wav" --layout back --swap-sur
-```
 
 **If your file is 5.1(side):**
 
@@ -160,7 +154,6 @@ Defaults: look‑ahead 2 ms, attack 0.5 ms, release 80 ms, soft knee, ceiling = 
 ## Parameters & Defaults
 
 * `--layout back|side` — choose 5.1(back) or 5.1(side). Default: `back`.
-* `--swap-sur` — swap S\_L and S\_R after HPF+delay (use if your file/decoder mapping yields inverted surrounds).
 * `--center-db` — center gain into Lt/Rt (default **−3 dB**).
 * `--near-sur-db` — near surround gain (default **−1.2 dB**, ≈0.871).
 * `--far-sur-db` — far surround gain (default **−6.2 dB**, ≈0.490).
@@ -186,7 +179,6 @@ Defaults: look‑ahead 2 ms, attack 0.5 ms, release 80 ms, soft knee, ceiling = 
 
     * Check for clipping on loud SFX; limiter should transparently prevent peaks ≥ ceiling.
 
-If a rears‑swap is noticed, add `--swap-sur` and re‑encode.
 
 ---
 

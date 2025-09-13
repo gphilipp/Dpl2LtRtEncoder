@@ -23,13 +23,12 @@
 //   dotnet build
 //
 // Usage:
-//   dotnet run -- <input.wav> <output.wav> [--layout back|side] [--swap-sur] [--sr-delay-ms 10] \
+//   dotnet run -- <input.wav> <output.wav> [--layout back|side] [--sr-delay-ms 10] \
 //               [--hp-sur-freq 120] [--center-db -3] [--near-sur-db -1.2] [--far-sur-db -6.2] \
 //               [--lfe-db -inf] [--limit 0.98]
 //
 // Example (file tagged 5.1(back) with BL/BR):
 //   dotnet run -- 5.1_in.wav out_ltrt.wav --layout back --center-db -3 --near-sur-db -1.2 --far-sur-db -6.2
-// If your BL/BR are inverted on decode, try adding --swap-sur.
 
 using System;
 using System.Collections.Generic;
@@ -45,7 +44,7 @@ namespace Dpl2LtRtEncoder
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: Dpl2LtRtEncoder <input.wav> <output.wav> [--layout back|side] [--swap-sur] [--sr-delay-ms 10] [--hp-sur-freq 120] [--center-db -3] [--near-sur-db -1.2] [--far-sur-db -6.2] [--lfe-db -inf] [--limit 0.98]");
+                Console.WriteLine("Usage: Dpl2LtRtEncoder <input.wav> <output.wav> [--layout back|side] [--sr-delay-ms 10] [--hp-sur-freq 120] [--center-db -3] [--near-sur-db -1.2] [--far-sur-db -6.2] [--lfe-db -inf] [--limit 0.98]");
                 return 1;
             }
 
@@ -60,7 +59,6 @@ namespace Dpl2LtRtEncoder
             float farSurDb = -6.2f;  // ~0.490
             float lfeDb = float.NegativeInfinity; // default: no LFE
             float limitCeiling = 0.98f;
-            bool swapSur = false; // flips BL/BR (or SL/SR) if needed
 
             // Parse simple args
             for (int i = 2; i < args.Length; i++)
@@ -68,7 +66,6 @@ namespace Dpl2LtRtEncoder
                 switch (args[i])
                 {
                     case "--layout": layout = args[++i]; break;
-                    case "--swap-sur": swapSur = true; break;
                     case "--sr-delay-ms": surroundDelayMs = float.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--hp-sur-freq": hpSurFreq = float.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--center-db": centerDb = float.Parse(args[++i], CultureInfo.InvariantCulture); break;
@@ -103,7 +100,7 @@ namespace Dpl2LtRtEncoder
                     : ChannelMapper.FivePointOneBack();
 
                 Console.WriteLine($"SampleRate: {sampleRate} Hz, Bits: {wf.BitsPerSample}, Channels: {wf.Channels}");
-                Console.WriteLine($"Using layout: {mapping.LayoutName}{(swapSur ? " (surrounds swapped)" : string.Empty)}");
+                Console.WriteLine($"Using layout: {mapping.LayoutName}");
 
                 // Input format details
                 int channels = wf.Channels;
@@ -230,11 +227,6 @@ namespace Dpl2LtRtEncoder
                         // Surround preprocessing: HPF -> delay
                         float S1p = delayBL.Process(hpBL.Process(S1));
                         float S2p = delayBR.Process(hpBR.Process(S2));
-
-                        if (swapSur)
-                        {
-                            var tmp = S1p; S1p = S2p; S2p = tmp;
-                        }
 
                         // PLII-style surround contributions (no pre-negation)
                         // Lt: +j*(near*BL/SL + far*BR/SR)
